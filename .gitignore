@@ -1,0 +1,3 @@
+# Never commit personal config
+*.conf
+!*.conf.example

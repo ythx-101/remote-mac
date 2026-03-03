@@ -1,0 +1,14 @@
+# ~/.remote-mac.conf — Remote Mac configuration
+# Copy this file to ~/.remote-mac.conf and fill in your values.
+# All values can also be set as environment variables.
+
+# SSH connection
+MAC_SSH_HOST="your-mac-tailscale-ip-or-hostname"
+MAC_SSH_USER="your-mac-username"
+MAC_SSH_PORT="22"
+
+# Antigravity Bridge (optional — only needed for AI agent features)
+# MAC_BRIDGE_URL="http://your-mac-ip:19999/health"
+
+# OpenClaw Node ID (optional — only needed for nodes.run integration)
+# MAC_NODE_ID="your-openclaw-node-id"
