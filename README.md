@@ -128,6 +128,44 @@ See [`remote-mac.conf.example`](remote-mac.conf.example) for a commented templat
 
 ---
 
+## Dual-channel architecture
+
+When used with [OpenClaw](https://github.com/openclaw/openclaw), remote-mac supports two independent control channels — SSH and OpenClaw Node — that serve as mutual fallbacks:
+
+```
+                    ┌─────────────┐
+                    │    VPS      │
+                    └──────┬──────┘
+                           │
+              ┌────────────┴────────────┐
+              │                         │
+         SSH (mac_exec.sh)        OpenClaw Node
+         port 22, any cmd         Tailscale WebSocket
+         ~50ms latency            lower latency, auto-reconnect
+              │                         │
+              └────────────┬────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │    Mac      │
+                    └─────────────┘
+```
+
+| Channel | How | Best for |
+|---------|-----|---------|
+| **SSH** | `mac_exec.sh` via `ssh` | Any shell command, file transfer, screenshots |
+| **OpenClaw Node** | `nodes.run` tool built into OpenClaw | Low-latency ops, AI agent workflows, auto-reconnect |
+
+`channel_check.sh` probes both channels and tells you which is available:
+
+```bash
+bash scripts/channel_check.sh
+# → { "ssh": { "available": true }, "ag_bridge": { ... }, "preferred": "ssh" }
+```
+
+If SSH is down, fall back to the Node channel. If both are up, prefer whichever has lower latency.
+
+---
+
 ## Tips
 
 **Keep Mac awake:**
