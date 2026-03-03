@@ -10,43 +10,9 @@
 
 set -euo pipefail
 
-# --- Config loading ---
-MAC_SSH_HOST="${MAC_SSH_HOST:-mac.local}"
-MAC_SSH_USER="${MAC_SSH_USER:-$(whoami)}"
-MAC_SSH_PORT="${MAC_SSH_PORT:-22}"
-MAC_BRIDGE_URL="${MAC_BRIDGE_URL:-}"
-
-conf="${REMOTE_MAC_CONF:-$HOME/.remote-mac.conf}"
-if [ -f "$conf" ]; then
-    # shellcheck source=/dev/null
-    source "$conf"
-fi
-
-MAC_SSH="${MAC_SSH_USER}@${MAC_SSH_HOST}"
-
-# Portable control socket directory (XDG_RUNTIME_DIR → TMPDIR → ~/.cache)
-control_root="${REMOTE_MAC_CONTROL_DIR:-}"
-if [ -z "$control_root" ]; then
-    if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-        control_root="${XDG_RUNTIME_DIR%/}/remote-mac"
-    elif [ -n "${TMPDIR:-}" ]; then
-        control_root="${TMPDIR%/}/remote-mac"
-    else
-        control_root="$HOME/.cache/remote-mac"
-    fi
-fi
-mkdir -p "$control_root"
-control_path="${control_root}/ssh_mac_%h"
-SSH_OPTS="-p ${MAC_SSH_PORT} -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ControlMaster=auto -o ControlPath=${control_path} -o ControlPersist=10m"
-
-now_ms() {
-    python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null || echo "0"
-}
-
-# Properly escape a string as a JSON value (handles quotes, backslashes, etc.)
-json_escape() {
-    python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" -- "$1"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+load_config
 
 # Check SSH
 ssh_ok=false
@@ -63,7 +29,6 @@ bridge_status=""
 bridge_ms=0
 if [ -n "$MAC_BRIDGE_URL" ]; then
     bridge_start=$(now_ms)
-    # Use -sSf so HTTP 4xx/5xx are treated as failures (bridge_ok stays false)
     bridge_resp=$(curl -sSf --max-time 3 "$MAC_BRIDGE_URL" 2>/dev/null || echo "")
     bridge_end=$(now_ms)
     bridge_ms=$(( bridge_end - bridge_start ))
@@ -80,7 +45,6 @@ else
     preferred="none"
 fi
 
-# Build JSON safely — avoid injection from dynamic values
 timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u)
 timestamp_json=$(json_escape "$timestamp")
 target_json=$(json_escape "${MAC_SSH_USER}@${MAC_SSH_HOST}:${MAC_SSH_PORT}")

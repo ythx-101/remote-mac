@@ -14,46 +14,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# --- Config loading ---
-load_config() {
-    # Defaults
-    MAC_SSH_HOST="${MAC_SSH_HOST:-mac.local}"
-    MAC_SSH_USER="${MAC_SSH_USER:-$(whoami)}"
-    MAC_SSH_PORT="${MAC_SSH_PORT:-22}"
-
-    # Load from config file if present
-    local conf="${REMOTE_MAC_CONF:-$HOME/.remote-mac.conf}"
-    if [ -f "$conf" ]; then
-        # shellcheck source=/dev/null
-        source "$conf"
-    fi
-
-    # Portable control socket directory (XDG_RUNTIME_DIR → TMPDIR → ~/.cache)
-    local control_root="${REMOTE_MAC_CONTROL_DIR:-}"
-    if [ -z "$control_root" ]; then
-        if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-            control_root="${XDG_RUNTIME_DIR%/}/remote-mac"
-        elif [ -n "${TMPDIR:-}" ]; then
-            control_root="${TMPDIR%/}/remote-mac"
-        else
-            control_root="$HOME/.cache/remote-mac"
-        fi
-    fi
-    mkdir -p "$control_root"
-    local control_path="${control_root}/ssh_mac_%h"
-
-    MAC_SSH="${MAC_SSH_USER}@${MAC_SSH_HOST}"
-    local common_opts="-o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ControlMaster=auto -o ControlPath=${control_path} -o ControlPersist=10m"
-    SSH_OPTS="-p ${MAC_SSH_PORT} ${common_opts}"
-    SCP_OPTS="-P ${MAC_SSH_PORT} ${common_opts}"
-}
-
-# Safely single-quote a string for use in remote shell commands
-shell_escape() {
-    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
-}
-
+source "$SCRIPT_DIR/common.sh"
 load_config
 
 # --- Channel Detection ---
@@ -77,8 +38,8 @@ exec_cmd() {
 do_run() {
     local cmd="$1"
     local tout="${2:-30}"
+    [[ "$tout" =~ ^[0-9]+$ ]] || { echo "Invalid timeout" >&2; exit 1; }
     echo "[ssh→mac] (timeout ${tout}s) $cmd" >&2
-    # Shell-escape the command so it runs exactly once under bash -lc
     local cmd_payload
     cmd_payload=$(shell_escape "$cmd")
     local remote_cmd
@@ -97,7 +58,7 @@ EOF
 
 do_screenshot() {
     local local_path="${1:-/tmp/mac_screenshot.png}"
-    local remote_path="/tmp/mac_ss_$$.png"
+    local remote_path="/tmp/mac_ss_$$_$RANDOM.png"
     echo "[screenshot] → $local_path" >&2
 
     if ! check_ssh; then
@@ -122,7 +83,6 @@ do_app() {
             exec_cmd "open -a ${app_q}"
             ;;
         activate)
-            # Pass app name as argv to avoid AppleScript injection
             exec_cmd "osascript -e 'on run argv' -e 'tell application item 1 of argv to activate' -e 'end run' -- ${app_q}"
             ;;
         quit)
@@ -152,11 +112,11 @@ do_file() {
 
     case "$direction" in
         get)  # Mac → local
-            scp $SCP_OPTS "$MAC_SSH:$src" "$dst"
+            scp $SCP_OPTS "$MAC_SSH:\"$src\"" "$dst"
             echo "Downloaded: $dst"
             ;;
         put)  # local → Mac
-            scp $SCP_OPTS "$src" "$MAC_SSH:$dst"
+            scp $SCP_OPTS "$src" "$MAC_SSH:\"$dst\""
             echo "Uploaded: $dst"
             ;;
         *)
@@ -173,6 +133,21 @@ if [ $# -lt 1 ]; then
 fi
 
 case "$1" in
+    --help|-h)
+        cat <<'EOF'
+Usage:
+  mac_exec.sh --run "command" [timeout_seconds]
+  mac_exec.sh --screenshot [output_path]
+  mac_exec.sh --app "open|activate|quit|kill:AppName"
+  mac_exec.sh --file "get|put:src:dst"
+
+Config (env vars or ~/.remote-mac.conf):
+  MAC_SSH_HOST   — SSH host (default: mac.local)
+  MAC_SSH_USER   — SSH user (default: current user)
+  MAC_SSH_PORT   — SSH port (default: 22)
+EOF
+        exit 0
+        ;;
     --run)
         [ -z "${2:-}" ] && { echo "Missing command" >&2; exit 1; }
         do_run "$2" "${3:-30}"

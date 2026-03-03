@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.0] - 2026-03-03
+
+### Changed
+- Extracted shared logic into `scripts/common.sh` — config loading, ControlPath, `shell_escape()`, `json_escape()`, `now_ms()`; both scripts now `source` it
+- Fixed config loading priority: environment variables now correctly override config file values (was reversed in v1.0.0); priority is now `env > ~/.remote-mac.conf > defaults`
+
+### Added
+- `--help` / `-h` flag in `mac_exec.sh` prints usage and exits
+- Timeout validation in `do_run`: non-numeric values now fail with a clear error
+
+### Fixed
+- `do_screenshot` remote path now includes `$RANDOM` to avoid rare PID collisions
+- `do_file` scp paths are now quoted to handle spaces in filenames
+
+---
+
 ## [1.0.0] - 2026-03-03
 
 First public release.
